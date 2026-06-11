@@ -805,27 +805,198 @@ function toast(iconSvg, type, title, message, dur) {
 function dismissT(id) { const el=document.getElementById(id); if(el){el.classList.remove('show');setTimeout(()=>el.remove(),300);} clearTimeout(tTimers[id]); delete tTimers[id]; }
 
 // ─────────────────────────────────────────────
-// SCHEDULER ALERTS
+// ALERT SYSTEM — polling-based (Teams-safe)
+// WHY: Teams iframes throttle/kill setTimeout for
+// long delays. setInterval at 1 s stays alive.
+// We check every second: if a reminder's timestamp
+// has just passed and it hasn't fired yet → fire it.
+// We also catch missed alerts on page load (tab was
+// backgrounded or Teams was closed).
 // ─────────────────────────────────────────────
-function schedAlert(r) {
-  const delay = r.ts - Date.now();
-  if (delay <= 0) return;
-  cancelAlert(r.id);
-  alerts[r.id] = setTimeout(() => fireAlert(r), delay);
-  if (delay > 3600000) setTimeout(() => toast(I.bell,'warn','1 Hour Warning',`"${r.title}" is due in 1 hour!`), delay-3600000);
-  if (delay > 300000) setTimeout(() => toast(I.bell,'warn','5 Min Warning',`"${r.title}" fires in 5 minutes!`), delay-300000);
-}
-function cancelAlert(id) { if(alerts[id]){clearTimeout(alerts[id]);delete alerts[id];} }
 
+// Track which reminders have already been alerted
+// so we never double-fire. Stored in localStorage
+// so missed-alert detection survives page reloads.
+const FIRED_KEY = 'rmdb_fired_v1';
+function getFired() { try { return JSON.parse(localStorage.getItem(FIRED_KEY)||'{}'); } catch(e){return{};} }
+function markFired(id) { const f=getFired(); f[id]=Date.now(); localStorage.setItem(FIRED_KEY,JSON.stringify(f)); }
+function wasFired(id) { return !!getFired()[id]; }
+function pruneFired() {
+  // Remove entries for reminders that no longer exist
+  const f=getFired(), ids=new Set(db.reminders.map(r=>r.id));
+  let changed=false;
+  Object.keys(f).forEach(k=>{ if(!ids.has(k)){delete f[k];changed=true;} });
+  if(changed) localStorage.setItem(FIRED_KEY,JSON.stringify(f));
+}
+
+// Pre-alert tracking (1h / 5min warnings)
+const WARNED_KEY = 'rmdb_warned_v1';
+function getWarned() { try { return JSON.parse(localStorage.getItem(WARNED_KEY)||'{}'); } catch(e){return{};} }
+function setWarned(id, level) { const w=getWarned(); if(!w[id])w[id]={}; w[id][level]=true; localStorage.setItem(WARNED_KEY,JSON.stringify(w)); }
+function wasWarned(id, level) { const w=getWarned(); return !!(w[id]&&w[id][level]); }
+
+// Audio beep using Web Audio API (works inside Teams iframe)
+function playBeep(freq, dur, vol) {
+  try {
+    const ctx = new (window.AudioContext||window.webkitAudioContext)();
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.connect(gain); gain.connect(ctx.destination);
+    osc.frequency.value = freq||880;
+    osc.type = 'sine';
+    gain.gain.setValueAtTime(vol||0.3, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime+(dur||0.4));
+    osc.start(ctx.currentTime);
+    osc.stop(ctx.currentTime+(dur||0.4));
+  } catch(e) {}
+}
+
+function playAlertSound() {
+  // Three ascending tones
+  playBeep(660, 0.18, 0.3);
+  setTimeout(()=>playBeep(880, 0.18, 0.3), 200);
+  setTimeout(()=>playBeep(1100, 0.3, 0.35), 400);
+}
+
+// Full-screen alert overlay — impossible to miss in Teams
+function showAlertOverlay(r) {
+  const existing = document.getElementById('alertOverlay');
+  if (existing) existing.remove();
+
+  const overlay = document.createElement('div');
+  overlay.id = 'alertOverlay';
+  overlay.style.cssText = `
+    position:fixed;inset:0;z-index:9999;
+    background:rgba(0,0,0,0.72);
+    display:flex;align-items:center;justify-content:center;
+    padding:20px;animation:fadeInOv .25s ease;
+  `;
+
+  const box = document.createElement('div');
+  box.style.cssText = `
+    background:var(--surface);border-radius:18px;
+    padding:32px 28px;max-width:440px;width:100%;
+    box-shadow:0 24px 80px rgba(0,0,0,0.4);
+    text-align:center;position:relative;
+    border:2.5px solid var(--teams-purple);
+    animation:popIn .3s cubic-bezier(.34,1.56,.64,1);
+  `;
+
+  // Pulsing bell icon
+  box.innerHTML = `
+    <div style="width:64px;height:64px;background:var(--teams-purple-l);border-radius:50%;display:flex;align-items:center;justify-content:center;margin:0 auto 18px;animation:pulse 1s ease infinite alternate;">
+      <svg width="30" height="30" fill="none" viewBox="0 0 24 24" stroke="var(--teams-purple)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/>
+        <path d="M13.73 21a2 2 0 0 1-3.46 0"/>
+      </svg>
+    </div>
+    <div style="font-size:11px;font-weight:700;color:var(--teams-purple);text-transform:uppercase;letter-spacing:1px;margin-bottom:8px">🔔 Reminder</div>
+    <div style="font-size:20px;font-weight:700;color:var(--text);margin-bottom:10px;line-height:1.3">${esc(r.title)}</div>
+    ${r.desc?`<div style="font-size:14px;color:var(--text2);line-height:1.6;margin-bottom:20px;white-space:pre-wrap">${esc(r.desc)}</div>`:`<div style="margin-bottom:20px"></div>`}
+    <div style="font-size:12px;color:var(--text3);margin-bottom:22px">${fdt(r.ts)}</div>
+    <button onclick="document.getElementById('alertOverlay').remove()" style="
+      background:var(--teams-purple);color:#fff;border:none;border-radius:9px;
+      padding:11px 32px;font-size:14px;font-weight:700;cursor:pointer;
+      font-family:var(--font);width:100%;transition:background .15s;
+    " onmouseover="this.style.background='#4F52A3'" onmouseout="this.style.background='var(--teams-purple)'">
+      Got it ✓
+    </button>
+  `;
+
+  overlay.appendChild(box);
+  overlay.addEventListener('click', e => { if(e.target===overlay) overlay.remove(); });
+  document.body.appendChild(overlay);
+
+  // Auto-dismiss after 60 seconds
+  setTimeout(() => { if(document.getElementById('alertOverlay')) overlay.remove(); }, 60000);
+}
+
+// Inject keyframe animations once
+(function injectAnimations() {
+  if (document.getElementById('rmAnimStyle')) return;
+  const s = document.createElement('style');
+  s.id = 'rmAnimStyle';
+  s.textContent = `
+    @keyframes fadeInOv { from{opacity:0} to{opacity:1} }
+    @keyframes popIn { from{transform:scale(.85);opacity:0} to{transform:scale(1);opacity:1} }
+    @keyframes pulse { from{transform:scale(1)} to{transform:scale(1.12)} }
+  `;
+  document.head.appendChild(s);
+})();
+
+// Fire a single reminder alert
 function fireAlert(r) {
-  toast(I.bell,'bell','🔔 '+r.title, r.desc||'Your reminder is here!', 10000);
-  if ('Notification' in window && Notification.permission==='granted') {
-    new Notification('RemindMe: '+r.title, {body: r.desc||'Your scheduled reminder has fired.', tag: r.id});
-  }
+  if (wasFired(r.id)) return; // guard against double-fire
+  markFired(r.id);
+  playAlertSound();
+  showAlertOverlay(r);
+  toast(I.bell,'bell','🔔 '+r.title, r.desc||'Your reminder is here!', 15000);
   if (page==='upcoming'||page==='dashboard') renderPage();
 }
 
-function schedAllAlerts() { db.reminders.forEach(r => { if(r.ts>Date.now()) schedAlert(r); }); }
+// THE MAIN POLLING LOOP — runs every second
+// This is the Teams-safe replacement for setTimeout-based scheduling.
+// setInterval at short intervals survives iframe throttling.
+let alertPoller = null;
+function startAlertPoller() {
+  if (alertPoller) clearInterval(alertPoller);
+  alertPoller = setInterval(() => {
+    const now = Date.now();
+    db.reminders.forEach(r => {
+      if (wasFired(r.id)) return;
+
+      const diff = r.ts - now;
+
+      // Fire: timestamp reached (within a 2-second window to catch any tick misses)
+      if (diff <= 0 && diff >= -2000) {
+        fireAlert(r);
+        return;
+      }
+
+      // 1-hour warning
+      if (!wasWarned(r.id,'1h') && diff > 0 && diff <= 3600000 && diff > 3590000) {
+        setWarned(r.id,'1h');
+        toast(I.bell,'warn','⏰ 1 Hour Warning', `"${r.title}" is due in 1 hour`);
+        playBeep(660, 0.25, 0.2);
+      }
+
+      // 5-minute warning
+      if (!wasWarned(r.id,'5m') && diff > 0 && diff <= 300000 && diff > 290000) {
+        setWarned(r.id,'5m');
+        toast(I.bell,'warn','⚡ 5 Min Warning', `"${r.title}" fires in 5 minutes!`);
+        playBeep(880, 0.25, 0.25);
+      }
+
+      // 1-minute warning
+      if (!wasWarned(r.id,'1m') && diff > 0 && diff <= 60000 && diff > 50000) {
+        setWarned(r.id,'1m');
+        toast(I.bell,'warn','🔔 1 Min Warning', `"${r.title}" fires in 1 minute!`);
+        playBeep(1100, 0.25, 0.25);
+      }
+    });
+  }, 1000);
+}
+
+// On load: catch any reminders that fired while Teams was closed/backgrounded
+function catchMissedAlerts() {
+  const now = Date.now();
+  const missed = db.reminders.filter(r => r.ts <= now && r.ts >= now - 86400000 && !wasFired(r.id));
+  if (missed.length === 0) return;
+
+  // Show a summary toast for missed ones
+  missed.forEach(r => markFired(r.id));
+  const names = missed.map(r=>`"${r.title}"`).join(', ');
+  toast(I.bell,'warn',
+    `⚠️ ${missed.length} missed reminder${missed.length>1?'s':''}`,
+    `You missed: ${names}`,
+    12000
+  );
+  playBeep(660, 0.3, 0.2);
+}
+
+function cancelAlert(id) { /* no-op: polling-based, nothing to cancel */ }
+function schedAlert(r)   { /* no-op: polling handles all reminders */   }
+function schedAllAlerts(){ /* no-op: polling handles all reminders */   }
 
 // ─────────────────────────────────────────────
 // BOOT
@@ -833,10 +1004,11 @@ function schedAllAlerts() { db.reminders.forEach(r => { if(r.ts>Date.now()) sche
 applyTheme(prefs.theme);
 
 initTeams().then(() => {
-  db = loadDB(); // reload with correct user key after Teams init
+  db = loadDB();
+  pruneFired();
   renderPage();
-  schedAllAlerts();
-  if ('Notification' in window && Notification.permission==='default') Notification.requestPermission();
+  catchMissedAlerts();
+  startAlertPoller();
   // Handle ?page= deep links from Teams static tabs
   const sp = new URLSearchParams(window.location.search).get('page');
   if (sp && ['dashboard','create','upcoming','history'].includes(sp)) go(sp);
