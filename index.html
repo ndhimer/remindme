@@ -1,0 +1,846 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<meta http-equiv="Content-Security-Policy" content="default-src 'self' https://res.cdn.office.net https://statics.teams.cdn.office.net https://teams.microsoft.com; script-src 'self' 'unsafe-inline' https://res.cdn.office.net https://unpkg.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; connect-src 'self' https:;">
+<title>RemindMe – Teams Reminder Utility</title>
+<script src="https://unpkg.com/@microsoft/teams-js@2.22.0/dist/MicrosoftTeams.min.js" crossorigin="anonymous"></script>
+<style>
+:root {
+  --teams-purple:#6264A7;--teams-purple-d:#4F52A3;--teams-purple-l:#E8E8F4;--teams-purple-xl:#F5F5FB;
+  --accent:#6264A7;--accent-h:#4F52A3;
+  --bg:#F5F5F5;--surface:#FFFFFF;--surface2:#F0F0F0;
+  --border:#E0E0E0;--border2:#C8C6C4;
+  --text:#201F1E;--text2:#605E5C;--text3:#8A8886;
+  --danger:#C4314B;--danger-bg:#FDE7EC;
+  --success:#107C10;--success-bg:#E5F3E5;
+  --warn-color:#D83B01;--warn-bg:#FFF0EB;
+  --radius:8px;--radius-lg:12px;
+  --shadow:0 2px 8px rgba(0,0,0,.08),0 0 1px rgba(0,0,0,.06);
+  --shadow-h:0 4px 16px rgba(0,0,0,.14),0 0 1px rgba(0,0,0,.08);
+  --font:'Segoe UI',system-ui,-apple-system,sans-serif;
+  --tr:.18s ease;--nav:220px;
+}
+[data-theme=dark]{
+  --bg:#1B1A19;--surface:#252423;--surface2:#323130;
+  --border:#3B3A39;--border2:#484644;
+  --text:#F3F2F1;--text2:#C8C6C4;--text3:#8A8886;
+  --teams-purple-l:#2D2D4E;--teams-purple-xl:#25253D;
+  --danger-bg:#3D1820;--success-bg:#1A3A1A;
+  --warn-bg:#3A1A0A;--warn-color:#F4947A;
+  --shadow:0 2px 8px rgba(0,0,0,.35),0 0 1px rgba(0,0,0,.25);
+  --shadow-h:0 4px 20px rgba(0,0,0,.5),0 0 1px rgba(0,0,0,.3);
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%;font-family:var(--font);background:var(--bg);color:var(--text);transition:background var(--tr),color var(--tr)}
+
+/* ── LAYOUT ── */
+.app{display:flex;height:100vh;overflow:hidden}
+.nav{width:var(--nav);background:var(--surface);border-right:1px solid var(--border);display:flex;flex-direction:column;flex-shrink:0;overflow-y:auto;transition:background var(--tr),border-color var(--tr)}
+.main{flex:1;overflow-y:auto;display:flex;flex-direction:column;min-width:0}
+
+/* ── SIDEBAR ── */
+.nav-head{padding:16px 16px 12px;border-bottom:1px solid var(--border)}
+.nav-logo{display:flex;align-items:center;gap:10px}
+.logo-box{width:36px;height:36px;background:var(--teams-purple);border-radius:9px;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.logo-box svg{width:20px;height:20px;fill:#fff}
+.logo-txt{font-size:15px;font-weight:700;color:var(--text);letter-spacing:-.3px;line-height:1.2}
+.logo-sub{font-size:10px;color:var(--text3);margin-top:1px}
+.nav-sec{padding:10px 16px 4px;font-size:10px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.8px}
+.nav-item{display:flex;align-items:center;gap:10px;padding:9px 12px;border-radius:var(--radius);margin:2px 8px;cursor:pointer;color:var(--text2);font-size:13.5px;transition:all var(--tr);position:relative;user-select:none}
+.nav-item:hover{background:var(--surface2);color:var(--text)}
+.nav-item.active{background:var(--teams-purple-l);color:var(--teams-purple);font-weight:600}
+.nav-item.active::before{content:'';position:absolute;left:0;top:8px;bottom:8px;width:3px;background:var(--teams-purple);border-radius:0 3px 3px 0}
+.nav-item svg{width:17px;height:17px;flex-shrink:0}
+.nav-badge{margin-left:auto;background:var(--teams-purple);color:#fff;font-size:10px;font-weight:700;padding:2px 6px;border-radius:10px;min-width:18px;text-align:center;line-height:1.4}
+.nav-foot{margin-top:auto;padding:10px;border-top:1px solid var(--border)}
+.theme-row{display:flex;align-items:center;gap:8px;padding:8px 10px;border-radius:var(--radius);cursor:pointer;font-size:12.5px;color:var(--text2);transition:all var(--tr)}
+.theme-row:hover{background:var(--surface2);color:var(--text)}
+.theme-row svg{width:15px;height:15px;flex-shrink:0}
+.t-track{width:34px;height:19px;background:var(--border2);border-radius:10px;position:relative;transition:background var(--tr);margin-left:auto;flex-shrink:0}
+.t-track.on{background:var(--teams-purple)}
+.t-thumb{width:15px;height:15px;background:#fff;border-radius:50%;position:absolute;top:2px;left:2px;transition:transform var(--tr);box-shadow:0 1px 3px rgba(0,0,0,.2)}
+.t-track.on .t-thumb{transform:translateX(15px)}
+.dev-credit{text-align:center;font-size:10px;color:var(--text3);padding:6px 8px 2px;line-height:1.5}
+
+/* ── PAGE HEADER ── */
+.page-hd{padding:20px 24px 14px;border-bottom:1px solid var(--border);background:var(--surface);position:sticky;top:0;z-index:10;transition:background var(--tr),border-color var(--tr)}
+.page-title{font-size:19px;font-weight:700;color:var(--text)}
+.page-sub{font-size:12px;color:var(--text3);margin-top:2px}
+.hd-row{display:flex;align-items:center;justify-content:space-between;gap:12px}
+
+/* ── CONTENT ── */
+.page-body{padding:20px 24px;flex:1}
+
+/* ── CARD ── */
+.card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-lg);transition:background var(--tr),border-color var(--tr)}
+.card-p{padding:20px 22px}
+
+/* ── FORM ── */
+.fg{margin-bottom:18px}
+.fl{display:block;font-size:12.5px;font-weight:600;color:var(--text2);margin-bottom:5px}
+.fl .req{color:var(--danger);margin-left:3px}
+.fi,.ft,.fs{width:100%;background:var(--surface);border:1.5px solid var(--border);border-radius:var(--radius);padding:8px 11px;font-size:13.5px;font-family:var(--font);color:var(--text);outline:none;transition:border-color var(--tr),background var(--tr)}
+.fi:focus,.ft:focus,.fs:focus{border-color:var(--teams-purple);box-shadow:0 0 0 3px rgba(98,100,167,.15)}
+.fi::placeholder,.ft::placeholder{color:var(--text3)}
+.ft{min-height:96px;resize:vertical;line-height:1.55}
+.fs{appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='11' height='11' viewBox='0 0 24 24' fill='none' stroke='%238A8886' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 9px center;padding-right:28px;cursor:pointer}
+.fr{display:grid;gap:12px}
+.fr2{grid-template-columns:1fr 1fr}
+.fr4{grid-template-columns:1fr 1fr 1fr 1fr}
+.sched-card{background:var(--teams-purple-xl);border:1.5px solid var(--teams-purple-l);border-radius:var(--radius-lg);padding:14px 18px;margin-bottom:18px}
+.sched-ttl{font-size:12px;font-weight:700;color:var(--teams-purple);margin-bottom:11px;display:flex;align-items:center;gap:5px}
+
+/* ── BUTTONS ── */
+.btn{display:inline-flex;align-items:center;gap:6px;padding:8px 16px;border-radius:var(--radius);font-size:13.5px;font-weight:600;font-family:var(--font);cursor:pointer;border:none;outline:none;transition:all var(--tr);white-space:nowrap}
+.btn-p{background:var(--teams-purple);color:#fff}
+.btn-p:hover{background:var(--accent-h);box-shadow:0 2px 8px rgba(98,100,167,.3)}
+.btn-p:active{transform:scale(.98)}
+.btn-g{background:transparent;color:var(--text2);border:1.5px solid var(--border)}
+.btn-g:hover{background:var(--surface2);color:var(--text);border-color:var(--border2)}
+.btn-d{background:transparent;color:var(--danger);border:1.5px solid var(--danger)}
+.btn-d:hover{background:var(--danger-bg)}
+.btn-sm{padding:6px 12px;font-size:12px}
+.bico{width:30px;height:30px;padding:0;display:inline-flex;align-items:center;justify-content:center;border-radius:var(--radius);background:transparent;border:1px solid var(--border);cursor:pointer;color:var(--text2);transition:all var(--tr)}
+.bico:hover{background:var(--surface2);color:var(--text)}
+.bico svg{width:14px;height:14px}
+.btn-row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+
+/* ── REMINDER CARDS ── */
+.r-grid{display:flex;flex-direction:column;gap:10px}
+.r-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-lg);padding:14px 18px;transition:all var(--tr);position:relative;overflow:hidden}
+.r-card:hover{border-color:var(--teams-purple);box-shadow:var(--shadow-h)}
+.r-card::before{content:'';position:absolute;left:0;top:0;bottom:0;width:4px;border-radius:var(--radius-lg) 0 0 var(--radius-lg);background:var(--teams-purple)}
+.r-card.expired::before{background:var(--border2)}
+.r-card.soon::before{background:var(--warn-color)}
+.r-hdr{display:flex;align-items:flex-start;gap:11px}
+.r-ico{width:36px;height:36px;background:var(--teams-purple-l);border-radius:8px;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.r-ico svg{width:17px;height:17px;color:var(--teams-purple)}
+.r-card.expired .r-ico{background:var(--surface2)}
+.r-card.expired .r-ico svg{color:var(--text3)}
+.r-info{flex:1;min-width:0}
+.r-trow{display:flex;align-items:center;gap:7px;flex-wrap:wrap}
+.r-name{font-size:14px;font-weight:700;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:280px}
+.r-desc{font-size:12.5px;color:var(--text2);margin-top:3px;line-height:1.5;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.r-meta{display:flex;align-items:center;gap:10px;margin-top:8px;flex-wrap:wrap}
+.mchip{display:flex;align-items:center;gap:4px;font-size:11.5px;color:var(--text3)}
+.mchip svg{width:12px;height:12px}
+.badge{display:inline-flex;align-items:center;gap:3px;padding:2px 8px;border-radius:6px;font-size:10.5px;font-weight:700}
+.b-up{background:var(--teams-purple-l);color:var(--teams-purple)}
+.b-soon{background:var(--warn-bg);color:var(--warn-color)}
+.b-exp{background:var(--surface2);color:var(--text3)}
+.r-acts{display:flex;align-items:center;gap:5px;flex-shrink:0;margin-left:auto}
+.cd{font-size:11.5px;font-weight:700;color:var(--teams-purple);background:var(--teams-purple-l);padding:3px 8px;border-radius:6px}
+.cd.soon{color:var(--warn-color);background:var(--warn-bg)}
+
+/* ── STATS ── */
+.stats{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:20px}
+.scard{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-lg);padding:14px 16px;display:flex;align-items:center;gap:12px}
+.s-ico{width:40px;height:40px;border-radius:10px;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.s-ico svg{width:19px;height:19px}
+.s-ico.purple{background:var(--teams-purple-l);color:var(--teams-purple)}
+.s-ico.green{background:var(--success-bg);color:var(--success)}
+.s-ico.orange{background:var(--warn-bg);color:var(--warn-color)}
+.s-num{font-size:22px;font-weight:700;color:var(--text);line-height:1}
+.s-lbl{font-size:11px;color:var(--text3);margin-top:2px}
+
+/* ── EMPTY ── */
+.empty{text-align:center;padding:48px 24px}
+.e-ico{width:60px;height:60px;background:var(--surface2);border-radius:50%;display:flex;align-items:center;justify-content:center;margin:0 auto 14px}
+.e-ico svg{width:26px;height:26px;color:var(--text3)}
+.e-ttl{font-size:15px;font-weight:600;color:var(--text);margin-bottom:5px}
+.e-sub{font-size:12.5px;color:var(--text3);margin-bottom:18px}
+
+/* ── MODAL ── */
+.mo{position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:100;display:flex;align-items:center;justify-content:center;padding:20px;opacity:0;pointer-events:none;transition:opacity var(--tr)}
+.mo.open{opacity:1;pointer-events:all}
+.mbox{background:var(--surface);border-radius:14px;width:100%;max-width:540px;box-shadow:0 20px 60px rgba(0,0,0,.22);transform:translateY(8px) scale(.98);transition:transform var(--tr);overflow:hidden;max-height:90vh;display:flex;flex-direction:column}
+.mo.open .mbox{transform:none}
+.m-hd{padding:18px 22px 14px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:10px;flex-shrink:0}
+.m-ttl{font-size:16px;font-weight:700;color:var(--text);flex:1}
+.m-body{padding:18px 22px;overflow-y:auto;flex:1}
+.m-foot{padding:14px 22px;border-top:1px solid var(--border);display:flex;justify-content:flex-end;gap:10px;flex-shrink:0}
+
+/* ── TOAST ── */
+.tc{position:fixed;top:16px;right:16px;z-index:200;display:flex;flex-direction:column;gap:9px;pointer-events:none}
+.toast{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-lg);padding:12px 16px;box-shadow:var(--shadow-h);display:flex;align-items:flex-start;gap:10px;min-width:280px;max-width:360px;pointer-events:all;transform:translateX(120%);transition:transform .28s cubic-bezier(.34,1.56,.64,1);position:relative;overflow:hidden}
+.toast.show{transform:none}
+.t-ico{width:30px;height:30px;border-radius:7px;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.t-ico.bell{background:var(--teams-purple-l);color:var(--teams-purple)}
+.t-ico.ok{background:var(--success-bg);color:var(--success)}
+.t-ico.warn{background:var(--warn-bg);color:var(--warn-color)}
+.t-ico svg{width:15px;height:15px}
+.t-con{flex:1;min-width:0}
+.t-ttl{font-size:12.5px;font-weight:700;color:var(--text);margin-bottom:2px}
+.t-msg{font-size:11.5px;color:var(--text2);line-height:1.4}
+.t-cls{background:none;border:none;cursor:pointer;color:var(--text3);display:flex;align-items:center;padding:2px}
+.t-cls:hover{color:var(--text)}
+.t-cls svg{width:13px;height:13px}
+.t-bar{position:absolute;bottom:0;left:0;height:3px;background:var(--teams-purple);border-radius:0}
+.t-bar.warn-bar{background:var(--warn-color)}
+.t-bar.ok-bar{background:var(--success)}
+
+/* ── SEARCH ── */
+.fbar{display:flex;align-items:center;gap:10px;margin-bottom:18px;flex-wrap:wrap}
+.sw{position:relative;flex:1;min-width:180px}
+.sw svg{position:absolute;left:9px;top:50%;transform:translateY(-50%);width:14px;height:14px;color:var(--text3);pointer-events:none}
+.sw input{padding-left:30px}
+
+/* ── ALERT BANNER ── */
+.alert-banner{background:var(--warn-bg);border:1.5px solid #F4947A;border-radius:var(--radius-lg);padding:12px 16px;margin-bottom:18px;display:flex;align-items:center;gap:10px}
+[data-theme=dark] .alert-banner{border-color:var(--warn-color)}
+.ab-ico{color:var(--warn-color);flex-shrink:0}
+.ab-ico svg{width:18px;height:18px}
+.ab-ttl{font-size:12.5px;font-weight:700;color:var(--warn-color)}
+.ab-sub{font-size:11.5px;color:var(--text2);margin-top:2px}
+
+/* ── USER CHIP ── */
+.user-chip{display:flex;align-items:center;gap:7px;padding:7px 10px;border-radius:var(--radius);background:var(--teams-purple-xl);margin:10px 8px 4px;border:1px solid var(--teams-purple-l)}
+.u-avatar{width:26px;height:26px;border-radius:50%;background:var(--teams-purple);display:flex;align-items:center;justify-content:center;color:#fff;font-size:10px;font-weight:700;flex-shrink:0}
+.u-name{font-size:11.5px;font-weight:600;color:var(--teams-purple);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+
+/* ── DIVIDER ── */
+.div{height:1px;background:var(--border);margin:16px 0}
+
+/* ── RESPONSIVE ── */
+@media(max-width:600px){
+  :root{--nav:56px}
+  .logo-txt,.logo-sub,.nav-sec,.nav-item span,.theme-row span,.dev-credit,.u-name{display:none}
+  .nav-item{justify-content:center;padding:10px}
+  .nav-item.active::before{display:none}
+  .nav-badge{position:absolute;top:3px;right:3px;min-width:13px;padding:1px 3px;font-size:9px}
+  .stats{grid-template-columns:1fr}
+  .fr4{grid-template-columns:1fr 1fr}
+  .page-body{padding:14px}
+  .page-hd{padding:12px 14px 10px}
+}
+</style>
+</head>
+<body>
+<div class="app" id="app">
+  <!-- SIDEBAR -->
+  <nav class="nav" id="sidebar">
+    <div class="nav-head">
+      <div class="nav-logo">
+        <div class="logo-box">
+          <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+            <path d="M12 2a2 2 0 0 1 1.73 3A7 7 0 0 1 19 12v5a1 1 0 0 0 1 1H4a1 1 0 0 0 1-1v-5A7 7 0 0 1 10.27 5 2 2 0 0 1 12 2zm0 18a2 2 0 0 0 2-2h-4a2 2 0 0 0 2 2z"/>
+          </svg>
+        </div>
+        <div>
+          <div class="logo-txt">RemindMe</div>
+          <div class="logo-sub">Teams Utility</div>
+        </div>
+      </div>
+    </div>
+    <div id="userChip"></div>
+    <div class="nav-sec">Navigation</div>
+    <div class="nav-item active" onclick="go('dashboard')" id="nav-dashboard">
+      <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
+      <span>Dashboard</span>
+    </div>
+    <div class="nav-item" onclick="go('create')" id="nav-create">
+      <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/></svg>
+      <span>New Reminder</span>
+    </div>
+    <div class="nav-item" onclick="go('upcoming')" id="nav-upcoming">
+      <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+      <span>Upcoming</span>
+      <span class="nav-badge" id="ub" style="display:none">0</span>
+    </div>
+    <div class="nav-item" onclick="go('history')" id="nav-history">
+      <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v5h5"/><path d="M3.05 13A9 9 0 1 0 6 5.3L3 8"/><line x1="12" y1="7" x2="12" y2="13"/><line x1="12" y1="13" x2="15" y2="15"/></svg>
+      <span>History</span>
+    </div>
+    <div class="nav-foot">
+      <div class="theme-row" onclick="toggleTheme()" id="themeRow">
+        <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+        <span>Dark mode</span>
+        <div class="t-track" id="tTrack"><div class="t-thumb"></div></div>
+      </div>
+      <div class="dev-credit">Developed by<br><strong style="color:var(--teams-purple)">Nileksh Dhimer</strong></div>
+    </div>
+  </nav>
+
+  <!-- MAIN -->
+  <div class="main" id="main"></div>
+</div>
+
+<!-- TOAST -->
+<div class="tc" id="tc"></div>
+
+<!-- EDIT MODAL -->
+<div class="mo" id="editMo">
+  <div class="mbox">
+    <div class="m-hd">
+      <div class="logo-box" style="width:30px;height:30px;border-radius:7px">
+        <svg fill="none" viewBox="0 0 24 24" stroke="#fff" stroke-width="2" width="15" height="15" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+      </div>
+      <div class="m-ttl">Edit Reminder</div>
+      <button class="bico" onclick="closeM('editMo')"><svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+    </div>
+    <div class="m-body" id="editBody"></div>
+    <div class="m-foot">
+      <button class="btn btn-g" onclick="closeM('editMo')">Cancel</button>
+      <button class="btn btn-p" onclick="saveEdit()">
+        <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" width="14" height="14" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
+        Save Changes
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- CONFIRM DELETE MODAL -->
+<div class="mo" id="delMo">
+  <div class="mbox" style="max-width:380px">
+    <div class="m-hd">
+      <div class="logo-box" style="width:30px;height:30px;border-radius:7px;background:#C4314B">
+        <svg fill="none" viewBox="0 0 24 24" stroke="#fff" stroke-width="2" width="15" height="15" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>
+      </div>
+      <div class="m-ttl">Delete Reminder</div>
+      <button class="bico" onclick="closeM('delMo')"><svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+    </div>
+    <div class="m-body"><p style="font-size:13.5px;color:var(--text2);line-height:1.6">Are you sure you want to delete this reminder? This action cannot be undone.</p></div>
+    <div class="m-foot">
+      <button class="btn btn-g" onclick="closeM('delMo')">Cancel</button>
+      <button class="btn btn-d" id="delBtn">Delete</button>
+    </div>
+  </div>
+</div>
+
+<!-- VIEW MODAL -->
+<div class="mo" id="viewMo">
+  <div class="mbox">
+    <div class="m-hd">
+      <div class="logo-box" style="width:30px;height:30px;border-radius:7px">
+        <svg fill="none" viewBox="0 0 24 24" stroke="#fff" stroke-width="2" width="15" height="15" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+      </div>
+      <div class="m-ttl">Reminder Details</div>
+      <button class="bico" onclick="closeM('viewMo')"><svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+    </div>
+    <div class="m-body" id="viewBody"></div>
+    <div class="m-foot">
+      <button class="btn btn-g" onclick="closeM('viewMo')">Close</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ─────────────────────────────────────────────
+// TEAMS SDK INIT
+// ─────────────────────────────────────────────
+let teamsCtx = null;
+let teamsUserId = null;
+let teamsUserName = '';
+let teamsTheme = 'default';
+
+async function initTeams() {
+  try {
+    await microsoftTeams.app.initialize();
+    const ctx = await microsoftTeams.app.getContext();
+    teamsCtx = ctx;
+    teamsUserId = ctx.user?.id || ctx.userObjectId || null;
+    teamsUserName = ctx.user?.displayName || ctx.userDisplayName || '';
+    teamsTheme = ctx.app?.theme || ctx.theme || 'default';
+    microsoftTeams.app.notifyAppLoaded();
+    microsoftTeams.app.notifySuccess();
+    // Sync Teams theme
+    if (teamsTheme === 'dark' || teamsTheme === 'contrast') {
+      prefs.theme = 'dark';
+    } else if (teamsTheme === 'default') {
+      // keep user preference
+    }
+    microsoftTeams.app.registerOnThemeChangeHandler(t => {
+      prefs.theme = (t === 'dark' || t === 'contrast') ? 'dark' : 'light';
+      savePrefs(prefs);
+      applyTheme(prefs.theme);
+    });
+  } catch(e) {
+    // Running outside Teams — continue normally
+  }
+}
+
+// ─────────────────────────────────────────────
+// DATA LAYER — per-user localStorage
+// ─────────────────────────────────────────────
+function getUserKey() {
+  // Prefer Teams AAD user ID for true per-user isolation
+  if (teamsUserId) return 'rmdb_' + teamsUserId.replace(/[^a-zA-Z0-9]/g,'_');
+  // Fallback: persistent anonymous ID
+  let anon = localStorage.getItem('rmdb_anon_id');
+  if (!anon) { anon = 'u_' + Date.now() + '_' + Math.random().toString(36).slice(2,9); localStorage.setItem('rmdb_anon_id', anon); }
+  return 'rmdb_' + anon;
+}
+
+const PKEY = 'rmdb_prefs_v1';
+function loadDB() { try { const r = localStorage.getItem(getUserKey()); return r ? JSON.parse(r) : {reminders:[]} } catch(e) { return {reminders:[]} } }
+function saveDB(db) { localStorage.setItem(getUserKey(), JSON.stringify(db)); }
+function loadPrefs() { try { const r = localStorage.getItem(PKEY); return r ? JSON.parse(r) : {theme:'light'} } catch(e) { return {theme:'light'} } }
+function savePrefs(p) { localStorage.setItem(PKEY, JSON.stringify(p)); }
+
+let db = {reminders:[]};
+let prefs = loadPrefs();
+let page = 'dashboard';
+let editId = null;
+let delId = null;
+let sq = '';
+let alerts = {};
+let cdTick = null;
+
+// ─────────────────────────────────────────────
+// THEME
+// ─────────────────────────────────────────────
+function applyTheme(t) {
+  document.documentElement.setAttribute('data-theme', t);
+  const tr = document.getElementById('tTrack');
+  if (tr) tr.classList.toggle('on', t === 'dark');
+}
+function toggleTheme() {
+  prefs.theme = prefs.theme === 'dark' ? 'light' : 'dark';
+  savePrefs(prefs);
+  applyTheme(prefs.theme);
+}
+
+// ─────────────────────────────────────────────
+// NAVIGATION
+// ─────────────────────────────────────────────
+function go(p) {
+  page = p; sq = '';
+  document.querySelectorAll('.nav-item').forEach(e => e.classList.remove('active'));
+  const el = document.getElementById('nav-' + p);
+  if (el) el.classList.add('active');
+  renderPage();
+}
+
+function badges() {
+  const n = Date.now(), cnt = db.reminders.filter(r => r.ts > n).length;
+  const el = document.getElementById('ub');
+  if (el) { el.style.display = cnt ? '' : 'none'; el.textContent = cnt; }
+}
+
+// ─────────────────────────────────────────────
+// HELPERS
+// ─────────────────────────────────────────────
+const esc = s => String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+const fdt = ts => new Date(ts).toLocaleString('en-IN',{day:'2-digit',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit',second:'2-digit',hour12:true});
+function cdStr(ts) {
+  const d = ts - Date.now(); if (d <= 0) return null;
+  const s=Math.floor(d/1000),m=Math.floor(s/60),h=Math.floor(m/60),dy=Math.floor(h/24);
+  if (dy>0) return dy+'d '+h%24+'h '+m%60+'m';
+  if (h>0) return h+'h '+m%60+'m '+s%60+'s';
+  if (m>0) return m+'m '+s%60+'s';
+  return s+'s left';
+}
+const soon = ts => { const d=ts-Date.now(); return d>0 && d<3600000; };
+const uid = () => 'r'+Date.now()+Math.random().toString(36).slice(2,7);
+
+// ─────────────────────────────────────────────
+// ICONS
+// ─────────────────────────────────────────────
+const I = {
+  bell:`<svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>`,
+  cal:`<svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>`,
+  clk:`<svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>`,
+  plus:`<svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>`,
+  edit:`<svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>`,
+  del:`<svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>`,
+  eye:`<svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>`,
+  src:`<svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>`,
+  hist:`<svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v5h5"/><path d="M3.05 13A9 9 0 1 0 6 5.3L3 8"/><line x1="12" y1="7" x2="12" y2="13"/><line x1="12" y1="13" x2="15" y2="15"/></svg>`,
+  save:`<svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" width="14" height="14" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>`,
+};
+
+// ─────────────────────────────────────────────
+// RENDER ENGINE
+// ─────────────────────────────────────────────
+function renderPage() {
+  const m = document.getElementById('main');
+  if (!m) return;
+  if (cdTick) { clearInterval(cdTick); cdTick = null; }
+  switch(page) {
+    case 'dashboard': m.innerHTML = renderDash(); break;
+    case 'create':    m.innerHTML = renderCreate(); break;
+    case 'upcoming':  m.innerHTML = renderUpcoming(); break;
+    case 'history':   m.innerHTML = renderHistory(); break;
+  }
+  badges();
+  updateUserChip();
+  if (page !== 'create') startCdTick();
+}
+
+function updateUserChip() {
+  const el = document.getElementById('userChip');
+  if (!el) return;
+  if (!teamsUserName) { el.innerHTML = ''; return; }
+  const initials = teamsUserName.split(' ').map(w=>w[0]).join('').toUpperCase().slice(0,2);
+  el.innerHTML = `<div class="user-chip"><div class="u-avatar">${initials}</div><div class="u-name">${esc(teamsUserName)}</div></div>`;
+}
+
+// ─────────────────────────────────────────────
+// DASHBOARD
+// ─────────────────────────────────────────────
+function renderDash() {
+  const now = Date.now(), all = db.reminders;
+  const up = all.filter(r=>r.ts>now), exp = all.filter(r=>r.ts<=now), sn = all.filter(r=>soon(r.ts));
+  const recent = [...all].sort((a,b)=>b.created-a.created).slice(0,4);
+  return `
+  <div class="page-hd">
+    <div class="hd-row">
+      <div><div class="page-title">Dashboard</div><div class="page-sub">Welcome back${teamsUserName?' '+teamsUserName.split(' ')[0]:''} — your reminder overview</div></div>
+      <button class="btn btn-p btn-sm" onclick="go('create')">${I.plus} New Reminder</button>
+    </div>
+  </div>
+  <div class="page-body">
+    <div class="stats">
+      <div class="scard"><div class="s-ico purple">${I.bell}</div><div><div class="s-num">${all.length}</div><div class="s-lbl">Total</div></div></div>
+      <div class="scard"><div class="s-ico green">${I.clk}</div><div><div class="s-num">${up.length}</div><div class="s-lbl">Upcoming</div></div></div>
+      <div class="scard"><div class="s-ico orange">${I.bell}</div><div><div class="s-num">${sn.length}</div><div class="s-lbl">Due &lt; 1hr</div></div></div>
+    </div>
+    ${sn.length>0?`<div class="alert-banner"><div class="ab-ico">${I.bell}</div><div><div class="ab-ttl">⏰ ${sn.length} reminder${sn.length>1?'s':''} due within the next hour!</div><div class="ab-sub">${sn.map(r=>'<b>'+esc(r.title)+'</b>').join(', ')}</div></div></div>`:''}
+    <div style="font-size:14px;font-weight:700;color:var(--text);margin-bottom:12px">Recently Added</div>
+    ${recent.length===0?`<div class="empty"><div class="e-ico">${I.bell}</div><div class="e-ttl">No reminders yet</div><div class="e-sub">Start by creating your first reminder</div><button class="btn btn-p" onclick="go('create')">${I.plus} Create Reminder</button></div>`:`<div class="r-grid">${recent.map(r=>rCard(r)).join('')}</div><div style="text-align:center;margin-top:14px"><button class="btn btn-g btn-sm" onclick="go('upcoming')">View all upcoming →</button></div>`}
+  </div>`;
+}
+
+// ─────────────────────────────────────────────
+// CREATE
+// ─────────────────────────────────────────────
+function renderCreate(pf) {
+  const p = pf||{}, now = new Date(); now.setMinutes(now.getMinutes()+30);
+  const dd = p.date||now.toISOString().split('T')[0];
+  const dh = p.hour||String(now.getHours()%12||12).padStart(2,'0');
+  const dm = p.min||String(now.getMinutes()).padStart(2,'0');
+  const ds = p.sec||'00';
+  const da = p.ampm||(now.getHours()>=12?'PM':'AM');
+  const hrs = Array.from({length:12},(_,i)=>String(i+1).padStart(2,'0'));
+  const mins = Array.from({length:60},(_,i)=>String(i).padStart(2,'0'));
+  const secs = Array.from({length:60},(_,i)=>String(i).padStart(2,'0'));
+  return `
+  <div class="page-hd">
+    <div class="hd-row">
+      <div><div class="page-title">New Reminder</div><div class="page-sub">Schedule a reminder with title, description and precise time</div></div>
+    </div>
+  </div>
+  <div class="page-body">
+    <div class="card card-p" style="max-width:620px">
+      <div class="fg">
+        <label class="fl">Title <span class="req">*</span></label>
+        <input type="text" class="fi" id="c_ttl" placeholder="e.g. Team sync, Review PR, Submit report…" maxlength="120" value="${esc(p.title||'')}"/>
+      </div>
+      <div class="fg">
+        <label class="fl">Description</label>
+        <textarea class="ft" id="c_desc" placeholder="Add context, notes, or action items for this reminder…" rows="4">${esc(p.desc||'')}</textarea>
+      </div>
+      <div class="div"></div>
+      <div class="sched-card">
+        <div class="sched-ttl">${I.cal} Schedule Date &amp; Time</div>
+        <div class="fg" style="margin-bottom:12px">
+          <label class="fl">Date <span class="req">*</span></label>
+          <input type="date" class="fi" id="c_date" value="${dd}" min="${new Date().toISOString().split('T')[0]}"/>
+        </div>
+        <div class="fr fr4">
+          <div><label class="fl">Hour</label><select class="fs" id="c_hr">${hrs.map(h=>`<option value="${h}"${h===dh?' selected':''}>${h}</option>`).join('')}</select></div>
+          <div><label class="fl">Minute</label><select class="fs" id="c_min">${mins.map(m=>`<option value="${m}"${m===dm?' selected':''}>${m}</option>`).join('')}</select></div>
+          <div><label class="fl">Second</label><select class="fs" id="c_sec">${secs.map(s=>`<option value="${s}"${s===ds?' selected':''}>${s}</option>`).join('')}</select></div>
+          <div><label class="fl">AM / PM</label><select class="fs" id="c_ap"><option value="AM"${da==='AM'?' selected':''}>AM</option><option value="PM"${da==='PM'?' selected':''}>PM</option></select></div>
+        </div>
+      </div>
+      <div class="btn-row">
+        <button class="btn btn-p" onclick="createReminder()">${I.bell} Save Reminder</button>
+        <button class="btn btn-g" onclick="go('create')">Clear</button>
+      </div>
+      <div id="cmsg" style="margin-top:12px"></div>
+    </div>
+  </div>`;
+}
+
+function getTs(ids) {
+  const date = document.getElementById(ids[0]).value;
+  const hour = parseInt(document.getElementById(ids[1]).value);
+  const min  = parseInt(document.getElementById(ids[2]).value);
+  const sec  = parseInt(document.getElementById(ids[3]).value);
+  const ap   = document.getElementById(ids[4]).value;
+  if (!date) return null;
+  let h24 = ap==='PM' ? (hour===12?12:hour+12) : (hour===12?0:hour);
+  const d = new Date(date); d.setHours(h24,min,sec,0); return d.getTime();
+}
+
+function createReminder() {
+  const title = document.getElementById('c_ttl').value.trim();
+  const desc  = document.getElementById('c_desc').value.trim();
+  if (!title) { msg('cmsg','Please enter a title.','e'); return; }
+  const ts = getTs(['c_date','c_hr','c_min','c_sec','c_ap']);
+  if (!ts) { msg('cmsg','Please select a date.','e'); return; }
+  if (ts <= Date.now()) { msg('cmsg','Please choose a future date and time.','e'); return; }
+  const r = {id:uid(), title, desc, ts, created:Date.now()};
+  db.reminders.push(r);
+  saveDB(db);
+  toast(I.bell,'bell','Reminder saved!',`"${title}" — ${fdt(ts)}`);
+  schedAlert(r);
+  go('upcoming');
+}
+
+function msg(id, text, type) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  el.innerHTML = `<div style="padding:9px 12px;border-radius:var(--radius);font-size:12.5px;background:${type==='e'?'var(--danger-bg)':'var(--success-bg)'};color:${type==='e'?'var(--danger)':'var(--success)'}">${esc(text)}</div>`;
+}
+
+// ─────────────────────────────────────────────
+// UPCOMING
+// ─────────────────────────────────────────────
+function renderUpcoming() {
+  const now = Date.now();
+  let rs = db.reminders.filter(r=>r.ts>now).sort((a,b)=>a.ts-b.ts);
+  if (sq) rs = rs.filter(r=>r.title.toLowerCase().includes(sq)||(r.desc||'').toLowerCase().includes(sq));
+  return `
+  <div class="page-hd">
+    <div class="hd-row">
+      <div><div class="page-title">Upcoming Reminders</div><div class="page-sub">${rs.length} active reminder${rs.length!==1?'s':''}</div></div>
+      <button class="btn btn-p btn-sm" onclick="go('create')">${I.plus} New</button>
+    </div>
+  </div>
+  <div class="page-body">
+    <div class="fbar">
+      <div class="sw">${I.src}<input type="text" class="fi" id="su" placeholder="Search upcoming…" value="${esc(sq)}" oninput="sq=this.value.toLowerCase();renderPage()"/></div>
+    </div>
+    ${rs.length===0?`<div class="empty"><div class="e-ico">${I.clk}</div><div class="e-ttl">${sq?'No results':'No upcoming reminders'}</div><div class="e-sub">${sq?'Try a different search':'Create a reminder to stay on track'}</div>${!sq?`<button class="btn btn-p" onclick="go('create')">${I.plus} Create Reminder</button>`:''}</div>`:`<div class="r-grid">${rs.map(r=>rCard(r,false)).join('')}</div>`}
+  </div>`;
+}
+
+// ─────────────────────────────────────────────
+// HISTORY
+// ─────────────────────────────────────────────
+function renderHistory() {
+  const now = Date.now();
+  let rs = db.reminders.filter(r=>r.ts<=now).sort((a,b)=>b.ts-a.ts);
+  if (sq) rs = rs.filter(r=>r.title.toLowerCase().includes(sq)||(r.desc||'').toLowerCase().includes(sq));
+  return `
+  <div class="page-hd">
+    <div class="hd-row">
+      <div><div class="page-title">Reminder History</div><div class="page-sub">${rs.length} completed reminder${rs.length!==1?'s':''}</div></div>
+      ${rs.length>0?`<button class="btn btn-g btn-sm" onclick="clearHist()" style="color:var(--danger);border-color:var(--danger)">${I.del} Clear All</button>`:''}
+    </div>
+  </div>
+  <div class="page-body">
+    <div class="fbar">
+      <div class="sw">${I.src}<input type="text" class="fi" id="sh" placeholder="Search history…" value="${esc(sq)}" oninput="sq=this.value.toLowerCase();renderPage()"/></div>
+    </div>
+    ${rs.length===0?`<div class="empty"><div class="e-ico">${I.hist}</div><div class="e-ttl">${sq?'No results':'No history yet'}</div><div class="e-sub">${sq?'Try a different search':'Past reminders will appear here once they expire'}</div></div>`:`<div class="r-grid">${rs.map(r=>rCard(r,true)).join('')}</div>`}
+  </div>`;
+}
+
+function clearHist() {
+  db.reminders = db.reminders.filter(r=>r.ts>Date.now());
+  saveDB(db);
+  toast(I.del,'warn','History cleared','All expired reminders removed.');
+  renderPage();
+}
+
+// ─────────────────────────────────────────────
+// REMINDER CARD
+// ─────────────────────────────────────────────
+function rCard(r, forceExp) {
+  const exp = forceExp || r.ts <= Date.now();
+  const sn = !exp && soon(r.ts);
+  const cd = exp ? null : cdStr(r.ts);
+  return `
+  <div class="r-card${exp?' expired':''}${sn?' soon':''}" id="rc_${r.id}">
+    <div class="r-hdr">
+      <div class="r-ico">${I.bell}</div>
+      <div class="r-info">
+        <div class="r-trow">
+          <div class="r-name">${esc(r.title)}</div>
+          ${exp?`<span class="badge b-exp">Completed</span>`:sn?`<span class="badge b-soon">⚡ Due soon</span>`:`<span class="badge b-up">Scheduled</span>`}
+        </div>
+        ${r.desc?`<div class="r-desc">${esc(r.desc)}</div>`:''}
+        <div class="r-meta">
+          <span class="mchip">${I.cal} ${fdt(r.ts)}</span>
+          ${cd?`<span class="cd${sn?' soon':''}" id="cd_${r.id}">${cd}</span>`:''}
+        </div>
+      </div>
+      <div class="r-acts">
+        <button class="bico" title="View" onclick="viewR('${r.id}')">${I.eye}</button>
+        ${!exp?`<button class="bico" title="Edit" onclick="openEdit('${r.id}')">${I.edit}</button>`:''}
+        <button class="bico" title="Delete" style="color:var(--danger)" onclick="confDel('${r.id}')">${I.del}</button>
+      </div>
+    </div>
+  </div>`;
+}
+
+// ─────────────────────────────────────────────
+// COUNTDOWNS
+// ─────────────────────────────────────────────
+function startCdTick() {
+  cdTick = setInterval(() => {
+    let needRefresh = false;
+    db.reminders.forEach(r => {
+      const el = document.getElementById('cd_'+r.id);
+      if (el) {
+        const c = cdStr(r.ts);
+        if (c) { el.textContent = c; el.className = 'cd'+(soon(r.ts)?' soon':''); }
+        else needRefresh = true;
+      }
+    });
+    if (needRefresh) renderPage();
+    badges();
+  }, 1000);
+}
+
+// ─────────────────────────────────────────────
+// VIEW MODAL
+// ─────────────────────────────────────────────
+function viewR(id) {
+  const r = db.reminders.find(r=>r.id===id); if (!r) return;
+  const exp = r.ts <= Date.now();
+  document.getElementById('viewBody').innerHTML = `
+    <div style="display:flex;flex-direction:column;gap:14px">
+      <div><div style="font-size:11px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px">Title</div><div style="font-size:16px;font-weight:700;color:var(--text)">${esc(r.title)}</div></div>
+      ${r.desc?`<div><div style="font-size:11px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px">Description</div><div style="font-size:13.5px;color:var(--text2);line-height:1.6;white-space:pre-wrap">${esc(r.desc)}</div></div>`:''}
+      <div style="display:flex;gap:20px;flex-wrap:wrap">
+        <div><div style="font-size:11px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px">Scheduled For</div><div style="font-size:13.5px;font-weight:600;color:var(--text)">${fdt(r.ts)}</div></div>
+        <div><div style="font-size:11px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px">Status</div><div>${exp?'<span class="badge b-exp">Completed</span>':'<span class="badge b-up">Upcoming</span>'}</div></div>
+        <div><div style="font-size:11px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px">Created</div><div style="font-size:13px;color:var(--text2)">${fdt(r.created)}</div></div>
+      </div>
+      ${!exp?`<div style="background:var(--teams-purple-xl);border:1.5px solid var(--teams-purple-l);border-radius:var(--radius);padding:10px 14px"><div style="font-size:13px;font-weight:700;color:var(--teams-purple)">${cdStr(r.ts)||'Due now'}</div><div style="font-size:11px;color:var(--text3);margin-top:2px">Until reminder fires</div></div>`:''}
+    </div>`;
+  openM('viewMo');
+}
+
+// ─────────────────────────────────────────────
+// EDIT MODAL
+// ─────────────────────────────────────────────
+function openEdit(id) {
+  editId = id;
+  const r = db.reminders.find(r=>r.id===id); if (!r) return;
+  const d = new Date(r.ts);
+  const h12 = d.getHours()%12||12, ap = d.getHours()>=12?'PM':'AM';
+  const hrs = Array.from({length:12},(_,i)=>String(i+1).padStart(2,'0'));
+  const mins = Array.from({length:60},(_,i)=>String(i).padStart(2,'0'));
+  const secs = Array.from({length:60},(_,i)=>String(i).padStart(2,'0'));
+  const def_d = d.toISOString().split('T')[0];
+  const def_h = String(h12).padStart(2,'0');
+  const def_m = String(d.getMinutes()).padStart(2,'0');
+  const def_s = String(d.getSeconds()).padStart(2,'0');
+  document.getElementById('editBody').innerHTML = `
+    <div class="fg"><label class="fl">Title <span class="req">*</span></label><input type="text" class="fi" id="e_ttl" value="${esc(r.title)}" maxlength="120"/></div>
+    <div class="fg"><label class="fl">Description</label><textarea class="ft" id="e_desc" rows="3">${esc(r.desc||'')}</textarea></div>
+    <div class="sched-card">
+      <div class="sched-ttl">${I.cal} Schedule Date &amp; Time</div>
+      <div class="fg" style="margin-bottom:11px"><label class="fl">Date</label><input type="date" class="fi" id="e_date" value="${def_d}"/></div>
+      <div class="fr fr4">
+        <div><label class="fl">Hour</label><select class="fs" id="e_hr">${hrs.map(h=>`<option value="${h}"${h===def_h?' selected':''}>${h}</option>`).join('')}</select></div>
+        <div><label class="fl">Minute</label><select class="fs" id="e_min">${mins.map(m=>`<option value="${m}"${m===def_m?' selected':''}>${m}</option>`).join('')}</select></div>
+        <div><label class="fl">Second</label><select class="fs" id="e_sec">${secs.map(s=>`<option value="${s}"${s===def_s?' selected':''}>${s}</option>`).join('')}</select></div>
+        <div><label class="fl">AM / PM</label><select class="fs" id="e_ap"><option value="AM"${ap==='AM'?' selected':''}>AM</option><option value="PM"${ap==='PM'?' selected':''}>PM</option></select></div>
+      </div>
+    </div>
+    <div id="emsg"></div>`;
+  openM('editMo');
+}
+
+function saveEdit() {
+  if (!editId) return;
+  const title = document.getElementById('e_ttl').value.trim();
+  const desc  = document.getElementById('e_desc').value.trim();
+  if (!title) { msg('emsg','Title is required.','e'); return; }
+  const ts = getTs(['e_date','e_hr','e_min','e_sec','e_ap']);
+  if (!ts) { msg('emsg','Please select a date.','e'); return; }
+  if (ts <= Date.now()) { msg('emsg','Please choose a future date and time.','e'); return; }
+  const idx = db.reminders.findIndex(r=>r.id===editId);
+  if (idx !== -1) {
+    db.reminders[idx] = {...db.reminders[idx], title, desc, ts};
+    saveDB(db);
+    cancelAlert(editId);
+    schedAlert(db.reminders[idx]);
+    toast(I.bell,'ok','Reminder updated',`"${title}" rescheduled`);
+  }
+  closeM('editMo');
+  renderPage();
+  editId = null;
+}
+
+// ─────────────────────────────────────────────
+// DELETE
+// ─────────────────────────────────────────────
+function confDel(id) {
+  delId = id;
+  document.getElementById('delBtn').onclick = () => doDelete(id);
+  openM('delMo');
+}
+
+function doDelete(id) {
+  db.reminders = db.reminders.filter(r=>r.id!==id);
+  saveDB(db);
+  cancelAlert(id);
+  toast(I.del,'warn','Reminder deleted','The reminder has been removed.');
+  closeM('delMo');
+  renderPage();
+}
+
+// ─────────────────────────────────────────────
+// MODALS
+// ─────────────────────────────────────────────
+function openM(id) { document.getElementById(id).classList.add('open'); }
+function closeM(id) { document.getElementById(id).classList.remove('open'); }
+document.querySelectorAll('.mo').forEach(el => el.addEventListener('click', e => { if(e.target===el) el.classList.remove('open'); }));
+
+// ─────────────────────────────────────────────
+// TOAST
+// ─────────────────────────────────────────────
+const tTimers = {};
+function toast(iconSvg, type, title, message, dur) {
+  const id = 't'+Date.now();
+  const iClass = {bell:'bell',ok:'ok',warn:'warn'}[type]||'bell';
+  const barClass = {bell:'',ok:' ok-bar',warn:' warn-bar'}[type]||'';
+  const delay = dur || (type==='bell'?8000:4000);
+  const el = document.createElement('div');
+  el.className = 'toast'; el.id = id;
+  el.innerHTML = `<div class="t-ico ${iClass}">${iconSvg}</div><div class="t-con"><div class="t-ttl">${esc(title)}</div><div class="t-msg">${esc(message)}</div></div><button class="t-cls" onclick="dismissT('${id}')"><svg fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button><div class="t-bar${barClass}" id="tb_${id}" style="width:100%;transition-duration:${delay}ms"></div>`;
+  document.getElementById('tc').appendChild(el);
+  requestAnimationFrame(() => { el.classList.add('show'); const b=document.getElementById('tb_'+id); if(b){requestAnimationFrame(()=>b.style.width='0%');} });
+  tTimers[id] = setTimeout(() => dismissT(id), delay);
+}
+function dismissT(id) { const el=document.getElementById(id); if(el){el.classList.remove('show');setTimeout(()=>el.remove(),300);} clearTimeout(tTimers[id]); delete tTimers[id]; }
+
+// ─────────────────────────────────────────────
+// SCHEDULER ALERTS
+// ─────────────────────────────────────────────
+function schedAlert(r) {
+  const delay = r.ts - Date.now();
+  if (delay <= 0) return;
+  cancelAlert(r.id);
+  alerts[r.id] = setTimeout(() => fireAlert(r), delay);
+  if (delay > 3600000) setTimeout(() => toast(I.bell,'warn','1 Hour Warning',`"${r.title}" is due in 1 hour!`), delay-3600000);
+  if (delay > 300000) setTimeout(() => toast(I.bell,'warn','5 Min Warning',`"${r.title}" fires in 5 minutes!`), delay-300000);
+}
+function cancelAlert(id) { if(alerts[id]){clearTimeout(alerts[id]);delete alerts[id];} }
+
+function fireAlert(r) {
+  toast(I.bell,'bell','🔔 '+r.title, r.desc||'Your reminder is here!', 10000);
+  if ('Notification' in window && Notification.permission==='granted') {
+    new Notification('RemindMe: '+r.title, {body: r.desc||'Your scheduled reminder has fired.', tag: r.id});
+  }
+  if (page==='upcoming'||page==='dashboard') renderPage();
+}
+
+function schedAllAlerts() { db.reminders.forEach(r => { if(r.ts>Date.now()) schedAlert(r); }); }
+
+// ─────────────────────────────────────────────
+// BOOT
+// ─────────────────────────────────────────────
+applyTheme(prefs.theme);
+
+initTeams().then(() => {
+  db = loadDB(); // reload with correct user key after Teams init
+  renderPage();
+  schedAllAlerts();
+  if ('Notification' in window && Notification.permission==='default') Notification.requestPermission();
+  // Handle ?page= deep links from Teams static tabs
+  const sp = new URLSearchParams(window.location.search).get('page');
+  if (sp && ['dashboard','create','upcoming','history'].includes(sp)) go(sp);
+});
+</script>
+</body>
+</html>
